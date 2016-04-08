@@ -18,7 +18,7 @@
     "serene-express": "^0.3.0",
     "serene-resources": "^0.6.0",
     "shortid": "^2.2.6",
-    "super-api-js": "^0.4.0",
+    "super-api-js": "^0.8.0",
     "winston": "^2.2.0"
   },
   "devDependencies": {

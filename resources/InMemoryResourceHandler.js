@@ -9,7 +9,15 @@ import {NotFoundError, ConflictError} from 'http-status-errors';
 
 export default class InMemoryResourceHandler {
   constructor() {
-    this.resources = {};
+    this.resources = {tasks: {
+      a: {id: 'a', description: 'a'},
+      b: {id: 'b', description: 'b'},
+      c: {id: 'c', description: 'c'},
+      d: {id: 'd', description: 'd'},
+      e: {id: 'e', description: 'e'},
+      f: {id: 'f', description: 'f'},
+      g: {id: 'g', description: 'g'}
+    }};
   }
 
   handle(request, response) {
@@ -30,71 +38,59 @@ export default class InMemoryResourceHandler {
 
     response.result = new Resource(request.resourceName, config.baseUrl);
 
-    if (sort)
-      items = _.orderBy(items, _.keys(sort), _(sort).values().map((x) => x === 1).value());
+    if (sort) {
+      let keys = _.keys(sort);
+      let dirs = _(sort).values().map((x) => x === 1 ? 'asc' : 'desc').value();
+      items = _.orderBy(items, keys, dirs);
+    }
 
     if (filter)
       items = _.filter(items, _.conforms(_.mapValues(filter, (x) => _.partial(_.includes, x))));
 
-    if (page) {
-      let url = `${config.baseUrl}/${request.resourceName}?page[size]=${page.size}`;
-      let count = items.length;
-      let pageCount = Math.ceil(count / page.size);
-      let links = {};
+    let count = items.length;
+    let exists;
 
+    if (page) {
       switch (page.method) {
         case 'number':
           items = items.slice((page.number - 1) * page.size, page.number * page.size);
-
-          links.first =`${url}&page[number]=1`;
-          links.last = `${url}&page[number]=${pageCount}`;
-          if (page.number > 1) links.prev = `${url}&page[number]=${page.number-1}`;
-          if (page.number < pageCount) links.next = `${url}&page[number]=${page.number+1}`;
           break;
 
         case 'offset':
           items = items.slice(page.offset, page.offset + page.size);
-
-          links.first = `${url}&page[offset]=0`;
-          links.last = `${url}&page[offset]=${count - page.size}`;
-          if (page.offset > 0) links.prev = `${url}&page[offset]=${Math.max(0, page.offset - page.size)}`;
-          if (page.offset < count - page.size) links.next = `${url}&page[number]=${page.offset + page.size}`;
           break;
 
         case 'after':
-          let key = page.field || 'id';
+          let key = page.field;
           let op = page.direction === 1 ? _.gt : _.lt;
-
-          if (key === 'id') {
-            items = _.orderBy(items, ['id'], [true]);
-          }
 
           if (typeof page.after !== 'undefined') {
             let f = {};
             f[key] = _.partial(op, _, page.after);
             let index = _.findIndex(items, _.conforms(f));
+            exists = typeof items[index + page.size] !== 'undefined';
             items = items.slice(index, index + page.size);
 
           } else {
+            exists = typeof items[page.size] !== 'undefined';
             items = items.slice(0, page.size);
           }
 
-          links.first = `${url}&page[after]=`;
+          if (page.reverse) {
+            items = items.reverse();
+          }
 
-          if (items.length === page.size)
-            links.next = `${url}&page[after]=${JSON.stringify(items[items.length - 1][key])}`;
           break;
       }
-
-      response.result
-        .links(links)
-        .meta({pageCount, count: _.values(request.data).length});
     }
 
     if (fields)
       items = items.map(_.partial(_.pick, _, fields));
 
-    response.result.elements(items);
+    response.result
+      .querystring(request.query)
+      .elements(items)
+      .paging(count, exists);
   }
 
   get(request, response) {
